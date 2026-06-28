@@ -202,29 +202,29 @@ pipeline {
             parallel {
 
                 stage('OWASP Dependency-Check') {
-                    steps {
-                        dir('claims-service') {
-                            bat '''
-								mvn dependency-check:check ^
-									-DfailBuildOnCVSS=7 ^
-									-DsuppressionFile=../devops-pipeline/owasp-suppressions.xml ^
-									-Dformat=HTML || echo "OWASP scan skipped - NVD API key required"
-							'''
-                            // CVSS >= 7 fails the build
-                            // Suppressions require documented justification + review date
-                        }
-                    }
-                    post {
-                        always {
-                            publishHTML(target: [
-                                allowMissing:  true,
-                                reportDir:     'claims-service/target',
-                                reportFiles:   'dependency-check-report.html',
-                                reportName:    'OWASP Dependency-Check Report',
-                            ])
-                        }
-                    }
-                }
+					steps {
+						dir('claims-service') {
+							catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+								bat '''
+									mvn dependency-check:check ^
+										-DfailBuildOnCVSS=7 ^
+										-DsuppressionFile=../devops-pipeline/owasp-suppressions.xml ^
+										-Dformat=HTML
+								'''
+							}
+						}
+					}
+					post {
+						always {
+							publishHTML(target: [
+								allowMissing:  true,
+								reportDir:     'claims-service/target',
+								reportFiles:   'dependency-check-report.html',
+								reportName:    'OWASP Dependency-Check Report',
+							])
+						}
+					}
+				}
 
                 stage('SonarQube Analysis') {
 					steps {
