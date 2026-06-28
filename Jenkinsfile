@@ -131,10 +131,10 @@ pipeline {
 
                 stage('Unit Tests: JavaScript') {
                     steps {
-                        dir('policy-dashboard') {
-                            bat 'npx cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --testPathPattern=tests/unit --coverage --ci'
-                        }
-                    }
+						dir('policy-dashboard') {
+							bat 'npx cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --coverage --ci'
+						}
+					}
                     post {
                         always {
                             publishHTML(target: [
