@@ -125,26 +125,51 @@ test.describe('Claims Dashboard — E2E', () => {
   });
 
   test('shows success message after approving', async () => {
-  const c = claim({ status: 'UNDER_REVIEW', id: 'approve-me' });
+  // Use a fresh page to avoid route conflicts
+  const c = claim({ status: 'UNDER_REVIEW' });
 
-  // Mock BOTH the claims list AND the approve endpoint BEFORE goto
-  await page_.page.route('**/api/v1/claims*', route => {
+  // Intercept ALL requests
+  await page_.page.route('**/*', route => {
     const url = route.request().url();
+
     if (url.includes('/approve')) {
-      route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ data: { ...c, status: 'APPROVED' }, status: 200, message: 'OK' }),
-      });
-    } else {
-      route.fulfill({
-        status: 200, contentType: 'application/json',
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         body: JSON.stringify({
-          data: { content: [c], totalElements: 1, totalPages: 1, page: 0, size: 10 },
-          status: 200, message: 'OK',
+          data: { ...c, status: 'APPROVED' },
+          status: 200,
+          message: 'OK',
         }),
       });
     }
+
+    if (url.includes('/api/v1/claims')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            content: [c],
+            totalElements: 1,
+            totalPages: 1,
+            page: 0,
+            size: 10,
+          },
+          status: 200,
+          message: 'OK',
+        }),
+      });
+    }
+
+    return route.continue();
   });
+
+  await page_.goto();
+  await page_.page.getByTestId('approve-button').click();
+  await expect(page_.actionSuccess).toBeVisible({ timeout: 10000 });
+  await expect(page_.actionSuccess).toContainText('approved');
+});
 
   await page_.goto();
   await page_.page.getByTestId('approve-button').click();
