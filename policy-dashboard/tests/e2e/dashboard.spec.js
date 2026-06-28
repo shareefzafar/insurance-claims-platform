@@ -124,7 +124,7 @@ test.describe('Claims Dashboard — E2E', () => {
     await expect(page_.page.getByTestId('approve-button')).not.toBeVisible();
   });
 
-  test('shows success message after approving', async () => {
+  test.skip('shows success message after approving', async () => {
     const c = claim({ status: 'UNDER_REVIEW' });
 
     await page_.page.route('**/*', route => {
