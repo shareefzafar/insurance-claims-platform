@@ -128,6 +128,64 @@ git push
 
 ---
 
+## Running the DevOps Tools Locally
+
+### Start SonarQube
+
+SonarQube runs as a standalone server on Windows.
+
+```cmd
+D:\sonarqube\bin\windows-x86-64\StartSonar.bat
+```
+
+Wait 2-3 minutes until the console shows `SonarQube is operational`.
+
+Open: **http://localhost:9000**
+Login: `admin` / `admin123`
+
+To run analysis manually:
+
+```cmd
+cd /d "D:\Zafar\Resume\Australia CV\CBA\HCL\Realtime Projects\claims-service"
+
+mvn clean verify sonar:sonar ^
+  -Dsonar.projectKey=insurance-claims-platform ^
+  -Dsonar.projectName="InsureCo Claims Platform" ^
+  -Dsonar.host.url=http://localhost:9000 ^
+  -Dsonar.token=sqa_c0906b85060ec4a56ed183cefe0e91192b000cc2 ^
+  -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+```
+
+Dashboard: **http://localhost:9000/dashboard?id=insurance-claims-platform**
+
+---
+
+### Start Jenkins
+
+Jenkins runs as a WAR file on port 8081.
+
+```cmd
+cd /d D:\Softwares\jenkins
+java -jar jenkins.war --httpPort=8081
+```
+
+Wait until the console shows `Jenkins is fully up and running`.
+
+Open: **http://localhost:8081**
+Login: `admin` / (admin password set during initial setup)
+
+To trigger the pipeline:
+
+1. Click `insurance-claims-pipeline`
+2. Click **Build with Parameters**
+3. Check `SKIP_INTEGRATION_TESTS` for a faster local build
+4. Click **Build**
+
+Pipeline reads the `Jenkinsfile` from the root of the GitHub repository:
+`https://github.com/shareefzafar/insurance-claims-platform`
+
+---
+
 ## SonarQube Results
 
 Local SonarQube analysis (http://localhost:9000):
