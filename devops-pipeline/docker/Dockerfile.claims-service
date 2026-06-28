@@ -13,29 +13,28 @@
 #
 # SECURITY BEST PRACTICES DEMONSTRATED:
 #   - Non-root user (appuser) — container does not run as root
-#   - Read-only layers where possible
 #   - No secrets in Dockerfile — all injected at runtime via AWS Secrets Manager
 #   - Specific base image tags — never 'latest' (reproducible builds)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── STAGE 1: BUILD ───────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jdk-jammy AS build
-# eclipse-temurin: open-source, production-grade JDK from Adoptium
-# 21-jdk-jammy: Java 21 LTS on Ubuntu 22.04 — specific tag, not 'latest'
+
+# Install Maven — not included in eclipse-temurin JDK image
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
 # Copy pom.xml first — Docker layer caching
 # If pom.xml hasn't changed, Maven dependencies are not re-downloaded
 COPY pom.xml .
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn dependency:go-offline -q
-# --mount=type=cache: BuildKit cache mount — speeds up repeated builds
+RUN mvn dependency:go-offline -q
 
 # Copy source and build
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -q
+RUN mvn clean package -DskipTests -q
 # -DskipTests: unit tests ran in CI — not repeated in Docker build
 # The JAR is now at target/claims-service-*.jar
 
@@ -52,7 +51,7 @@ ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.revision="${GIT_SHA}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.title="claims-service"
-LABEL org.opencontainers.image.description="CBA Claims Microservice — Spring Boot 3.2"
+LABEL org.opencontainers.image.description="InsureCo Claims Microservice — Spring Boot 3.2"
 
 # Create non-root user — containers must not run as root
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
