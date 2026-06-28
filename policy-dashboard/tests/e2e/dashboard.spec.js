@@ -104,7 +104,7 @@ test.describe('Claims Dashboard — E2E', () => {
   test('clear filters resets the list', async () => {
     await page_.mockClaims(claims10, 10);
     await page_.goto();
-    await page_.filterByStatus('REJECTED'); // no results
+    await page_.filterByStatus('REJECTED');
     await page_.clearAllFilters();
     await page_.expectClaimCount(10);
   });
@@ -125,57 +125,35 @@ test.describe('Claims Dashboard — E2E', () => {
   });
 
   test('shows success message after approving', async () => {
-  // Use a fresh page to avoid route conflicts
-  const c = claim({ status: 'UNDER_REVIEW' });
+    const c = claim({ status: 'UNDER_REVIEW' });
 
-  // Intercept ALL requests
-  await page_.page.route('**/*', route => {
-    const url = route.request().url();
-
-    if (url.includes('/approve')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: { ...c, status: 'APPROVED' },
+    await page_.page.route('**/*', route => {
+      const url = route.request().url();
+      if (url.includes('/approve')) {
+        return route.fulfill({
           status: 200,
-          message: 'OK',
-        }),
-      });
-    }
-
-    if (url.includes('/api/v1/claims')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: {
-            content: [c],
-            totalElements: 1,
-            totalPages: 1,
-            page: 0,
-            size: 10,
-          },
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { ...c, status: 'APPROVED' }, status: 200, message: 'OK' }),
+        });
+      }
+      if (url.includes('/api/v1/claims')) {
+        return route.fulfill({
           status: 200,
-          message: 'OK',
-        }),
-      });
-    }
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: { content: [c], totalElements: 1, totalPages: 1, page: 0, size: 10 },
+            status: 200, message: 'OK',
+          }),
+        });
+      }
+      return route.continue();
+    });
 
-    return route.continue();
+    await page_.goto();
+    await page_.page.getByTestId('approve-button').click();
+    await expect(page_.actionSuccess).toBeVisible({ timeout: 10000 });
+    await expect(page_.actionSuccess).toContainText('approved');
   });
-
-  await page_.goto();
-  await page_.page.getByTestId('approve-button').click();
-  await expect(page_.actionSuccess).toBeVisible({ timeout: 10000 });
-  await expect(page_.actionSuccess).toContainText('approved');
-});
-
-  await page_.goto();
-  await page_.page.getByTestId('approve-button').click();
-  await expect(page_.actionSuccess).toBeVisible({ timeout: 10000 });
-  await expect(page_.actionSuccess).toContainText('approved');
-});
 
   test('shows error when approve API fails', async () => {
     const c = claim({ status: 'UNDER_REVIEW', id: 'fail-approve' });
@@ -236,14 +214,14 @@ test.describe('Claims Dashboard — E2E', () => {
 
   test('can simulate slow API and verify loading spinner', async () => {
     await page_.page.route('**/api/v1/claims*', async route => {
-      await new Promise(r => setTimeout(r, 800)); // simulate 800ms latency
+      await new Promise(r => setTimeout(r, 800));
       await route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ data: { content: [claim()], totalElements: 1,
           totalPages: 1, page: 0, size: 10 }, status: 200, message: 'OK' }) });
     });
     await page_.goto();
-    await expect(page_.loadingSpinner).toBeVisible();  // visible during load
+    await expect(page_.loadingSpinner).toBeVisible();
     await page_.expectClaimCount(1);
-    await expect(page_.loadingSpinner).not.toBeVisible(); // gone after load
+    await expect(page_.loadingSpinner).not.toBeVisible();
   });
 });
