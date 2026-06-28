@@ -128,7 +128,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run Playwright E2E tests
         working-directory: policy-dashboard
-        run: npx playwright test --reporter=html,list
+        run: npx playwright test --project=chromium --reporter=html,list
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
