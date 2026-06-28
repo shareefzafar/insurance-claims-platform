@@ -2,7 +2,7 @@
 export default {
   testEnvironment: 'jsdom',
   transform:       {},
-  testMatch:       ['<rootDir>/tests/unit/**/*.test.js'],
+  testMatch: ['**/tests/unit/**/*.test.js'],
   collectCoverageFrom: [
     'src/utils/**/*.js',
   ],
