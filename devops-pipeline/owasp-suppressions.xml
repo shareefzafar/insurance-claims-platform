@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+    <!--
+        OWASP Dependency-Check Suppressions
+        =====================================
+        PIPELINE GATE: mvn dependency-check:check -DfailBuildOnCVSS=7
+        Any CVE with CVSS >= 7 that is NOT in this file FAILS the build.
+
+        RULES FOR THIS FILE (DevSecOps policy):
+        ─────────────────────────────────────────
+        1. NEVER suppress without a documented justification.
+        2. ALWAYS include:
+             - CVE number
+             - CVSS score
+             - Why it is not exploitable in OUR context
+             - Review date (must be re-evaluated before this date)
+             - Owner (who assessed this)
+        3. If exploitable: FIX IT. Do not suppress.
+        4. If fix unavailable: WAF rule + document it here + set a short review date.
+        5. Suppressions with past review dates block the pipeline — they must be renewed.
+
+        INTERVIEW POINT:
+        "We found CVE-2022-42003 in jackson-databind (CVSS 7.5) during our OWASP scan.
+         We assessed that the vulnerable deserialization code path is not reachable in
+         our application because we validate all input with @Valid before deserialization
+         and we do not use the affected TypeFactory.constructFromCanonical() method.
+         We documented this, set a review date, and updated to 2.14.1 in the next sprint."
+    -->
+
+    <!--
+        CVE-2022-42003
+        Library:     com.fasterxml.jackson.core:jackson-databind
+        CVSS:        7.5 (High)
+        Type:        Denial of Service via deeply nested JSON
+        Status:      ACCEPTED RISK (fixed in next sprint)
+
+        JUSTIFICATION:
+        The vulnerable code path (TypeFactory.constructFromCanonical()) is not called
+        in our application. All API inputs are validated with @Valid bean validation
+        before Jackson deserialization. We set spring.jackson.default-property-inclusion=
+        non_null which further restricts the attack surface.
+
+        REMEDIATION PLAN:
+        Upgrade to jackson-databind 2.14.1 in Sprint 24 (when Spring Boot 3.2.1 ships
+        with the patched version in its BOM).
+
+        OWNER:        Mohammad Zafar
+        REVIEWED:     2024-01-15
+        REVIEW-AGAIN: 2024-04-15
+    -->
+    <suppress>
+        <notes>
+            CVE-2022-42003: jackson-databind DoS via deeply nested JSON.
+            Not exploitable: TypeFactory.constructFromCanonical() is not used.
+            All inputs validated with @Valid before deserialization.
+            Fix: upgrade to 2.14.1 in Sprint 24.
+            Owner: Mohammad Zafar. Review by: 2024-04-15.
+        </notes>
+        <cve>CVE-2022-42003</cve>
+    </suppress>
+
+    <!--
+        CVE-2023-34055
+        Library:     org.springframework.boot:spring-boot-actuator
+        CVSS:        5.3 (Medium)
+        Status:      FALSE POSITIVE — below our CVSS 7 threshold anyway
+
+        JUSTIFICATION:
+        This CVE is a false positive — the vulnerable endpoint
+        /actuator/logfile is disabled in our configuration.
+        management.endpoint.logfile.enabled=false in application.properties.
+        CVSS 5.3 is below our threshold of 7, but documented here for completeness.
+
+        OWNER:        Mohammad Zafar
+        REVIEWED:     2024-01-15
+        REVIEW-AGAIN: 2024-07-15
+    -->
+    <suppress>
+        <notes>
+            CVE-2023-34055: Spring Boot Actuator logfile endpoint.
+            False positive: endpoint disabled via management.endpoint.logfile.enabled=false.
+            CVSS 5.3 — below our threshold anyway.
+            Owner: Mohammad Zafar. Review by: 2024-07-15.
+        </notes>
+        <cve>CVE-2023-34055</cve>
+    </suppress>
+
+</suppressions>

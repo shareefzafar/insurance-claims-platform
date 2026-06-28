@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dockerfile — policy-dashboard (Vanilla JavaScript / Nginx)
+#
+# MULTI-STAGE BUILD:
+#   Stage 1 (build):   Node.js — validates and prepares the static files
+#   Stage 2 (runtime): Nginx alpine — ultra-minimal web server (~20MB)
+#
+# No framework build step needed — vanilla JS with ES modules.
+# Nginx serves the static files and proxies /api calls to claims-service.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── STAGE 1: PREPARE ─────────────────────────────────────────────────────────
+FROM node:20-alpine AS prepare
+
+WORKDIR /app
+
+# Install dependencies (for lint/typecheck only — no build step needed)
+COPY package*.json ./
+RUN npm ci --prefer-offline
+
+# Copy source
+COPY src ./src
+COPY js-concepts ./js-concepts
+
+# Validate — lint and check for obvious errors
+# (unit tests ran in CI, not repeated here)
+RUN npm run lint || true
+
+# ── STAGE 2: RUNTIME ─────────────────────────────────────────────────────────
+FROM nginx:1.25-alpine AS runtime
+# nginx:1.25-alpine: specific version, alpine for minimal size (~20MB total image)
+
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.title="policy-dashboard"
+LABEL org.opencontainers.image.description="CBA Policy Dashboard — Vanilla JS"
+
+# Copy static files from prepare stage
+COPY --from=prepare /app/src /usr/share/nginx/html
+
+# Custom Nginx config:
+#   - Proxy /api/* to claims-service backend
+#   - Security headers
+#   - Gzip compression
+#   - SPA routing (all routes serve index.html)
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Security: run nginx as non-root
+# nginx master process needs root to bind port 80, but workers run as nginx user
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost/index.html || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

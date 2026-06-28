@@ -1,0 +1,239 @@
+# .github/workflows/deploy.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy Workflow — Staging + Production
+#
+# Triggered after CI passes on main branch.
+# Staging: automatic after CI success.
+# Production: requires manual approval via GitHub Environment protection rules.
+#
+# ARTEFACT IMMUTABILITY:
+#   The SAME Docker image (tagged with git SHA) that passed CI is promoted
+#   through staging → production. We NEVER rebuild for production.
+#   What you tested is exactly what deploys.
+#
+# OIDC AWS AUTH (no long-lived keys):
+#   GitHub issues a short-lived JWT. AWS validates it and returns temporary
+#   credentials (15 min expiry). Even if intercepted, they expire quickly.
+#   Eliminates the risk of leaked long-lived AWS_ACCESS_KEY_ID.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy — Staging + Production
+
+on:
+  workflow_run:
+    workflows: ['CI — Build, Test, Security Scan']
+    types:     [completed]
+    branches:  [main]
+
+env:
+  AWS_REGION:  'ap-southeast-2'
+  ECS_CLUSTER_STAGING: 'cba-staging'
+  ECS_CLUSTER_PROD:    'cba-production'
+
+jobs:
+
+  # ── GET IMAGE TAGS FROM CI ─────────────────────────────────────────────────
+  get-image-tags:
+    name: Get image tags from CI run
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      git-sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Get SHA from CI run
+        id: sha
+        run: |
+          SHA=$(git rev-parse --short ${{ github.event.workflow_run.head_sha }})
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "Deploying SHA: ${SHA}"
+
+  # ── DEPLOY STAGING ─────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: get-image-tags
+    environment: staging
+    # 'staging' environment: no approval required — deploys automatically
+    # Configure in GitHub → Settings → Environments → staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC — no long-lived AWS keys
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_STAGING_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Deploy claims-service to staging ───────────────────────────────
+      - name: Update ECS task definition — claims-service
+        id: task-def-claims
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs/staging/claims-service-task-def.json
+          container-name:  claims-service
+          image:           ${{ steps.ecr-login.outputs.registry }}/claims-service:${{ needs.get-image-tags.outputs.git-sha }}
+          # The SHA-tagged image from CI — artefact immutability guaranteed
+
+      - name: Deploy claims-service to ECS staging
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-claims.outputs.task-definition }}
+          service:         claims-service
+          cluster:         ${{ env.ECS_CLUSTER_STAGING }}
+          wait-for-service-stability: true
+          # Waits until the new task is healthy and old tasks are stopped
+
+      # ── Deploy policy-dashboard to staging ─────────────────────────────
+      - name: Update ECS task definition — policy-dashboard
+        id: task-def-dashboard
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs/staging/policy-dashboard-task-def.json
+          container-name:  policy-dashboard
+          image:           ${{ steps.ecr-login.outputs.registry }}/policy-dashboard:${{ needs.get-image-tags.outputs.git-sha }}
+
+      - name: Deploy policy-dashboard to ECS staging
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-dashboard.outputs.task-definition }}
+          service:         policy-dashboard
+          cluster:         ${{ env.ECS_CLUSTER_STAGING }}
+          wait-for-service-stability: true
+
+      # ── Smoke tests against staging ─────────────────────────────────────
+      - name: Smoke tests — health check
+        run: |
+          echo "Waiting for staging to be ready..."
+          sleep 30
+          curl -f --retry 5 --retry-delay 10 \
+            https://staging.claims.cba.internal/actuator/health \
+            || exit 1
+          echo "✅ Staging health check passed"
+
+      - name: Smoke tests — API responds
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.STAGING_SMOKE_TOKEN }}" \
+            https://staging.claims.cba.internal/api/v1/claims?size=1)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ API smoke test failed with status: $STATUS"
+            exit 1
+          fi
+          echo "✅ API smoke test passed"
+
+      - name: Playwright smoke tests against staging
+        working-directory: policy-dashboard
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test --grep @smoke
+        env:
+          PLAYWRIGHT_BASE_URL: https://staging.claims.cba.internal
+
+      - name: Upload staging test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-smoke-results
+          path: policy-dashboard/playwright-report/
+
+  # ── DEPLOY PRODUCTION ──────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [get-image-tags, deploy-staging]
+    environment: production
+    # 'production' environment: REQUIRES REVIEWER APPROVAL before this job runs
+    # Configure in GitHub → Settings → Environments → production → Required reviewers
+    # Add: tech lead, senior engineer, etc.
+    # This replaces the Jenkins input() gate — one click in GitHub UI to approve.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC — production role has stricter trust policy than staging role
+      - name: Configure AWS credentials via OIDC (production)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+          # This role only allows ECS updates — cannot delete, cannot access secrets
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Deploy claims-service to production ────────────────────────────
+      - name: Update ECS task definition — claims-service (prod)
+        id: task-def-claims-prod
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs/production/claims-service-task-def.json
+          container-name:  claims-service
+          image:           ${{ steps.ecr-login.outputs.registry }}/claims-service:${{ needs.get-image-tags.outputs.git-sha }}
+          # SAME SHA that passed CI and ran in staging — never rebuilt
+
+      - name: Deploy claims-service to ECS production
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-claims-prod.outputs.task-definition }}
+          service:         claims-service
+          cluster:         ${{ env.ECS_CLUSTER_PROD }}
+          wait-for-service-stability: true
+
+      # ── Deploy policy-dashboard to production ──────────────────────────
+      - name: Update ECS task definition — policy-dashboard (prod)
+        id: task-def-dashboard-prod
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs/production/policy-dashboard-task-def.json
+          container-name:  policy-dashboard
+          image:           ${{ steps.ecr-login.outputs.registry }}/policy-dashboard:${{ needs.get-image-tags.outputs.git-sha }}
+
+      - name: Deploy policy-dashboard to ECS production
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-dashboard-prod.outputs.task-definition }}
+          service:         policy-dashboard
+          cluster:         ${{ env.ECS_CLUSTER_PROD }}
+          wait-for-service-stability: true
+
+      # ── Production verification ─────────────────────────────────────────
+      - name: Production health check
+        run: |
+          curl -f --retry 5 --retry-delay 10 \
+            https://claims.cba.com.au/actuator/health \
+            || exit 1
+          echo "✅ Production health check passed"
+
+      - name: Log deployment to audit trail
+        run: |
+          echo "PRODUCTION DEPLOYMENT AUDIT"
+          echo "  SHA:       ${{ needs.get-image-tags.outputs.git-sha }}"
+          echo "  Triggered: ${{ github.actor }}"
+          echo "  Workflow:  ${{ github.run_id }}"
+          echo "  Time:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # In production: write to CloudWatch, Splunk, or your audit log system
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "❌ Production deployment failed — rolling back"
+          # ECS keeps the previous task definition
+          # Rollback = redeploy the previous task definition
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER_PROD }} \
+            --service claims-service \
+            --task-definition claims-service:PREVIOUS \
+            --force-new-deployment
+          echo "Rollback initiated — check ECS console"

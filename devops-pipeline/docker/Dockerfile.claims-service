@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dockerfile — claims-service (Java 21 / Spring Boot)
+#
+# MULTI-STAGE BUILD:
+#   Stage 1 (build):   Full JDK + Maven — compiles and packages the JAR
+#   Stage 2 (runtime): Minimal JRE only — nothing unnecessary in production
+#
+# WHY MULTI-STAGE?
+#   Build tools (Maven, JDK compiler, source code) NEVER reach the runtime image.
+#   Attack surface is minimised — if someone breaks into the container,
+#   they cannot compile, rebuild, or run Maven.
+#   Final image is ~200MB instead of ~600MB with full JDK.
+#
+# SECURITY BEST PRACTICES DEMONSTRATED:
+#   - Non-root user (appuser) — container does not run as root
+#   - Read-only layers where possible
+#   - No secrets in Dockerfile — all injected at runtime via AWS Secrets Manager
+#   - Specific base image tags — never 'latest' (reproducible builds)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── STAGE 1: BUILD ───────────────────────────────────────────────────────────
+FROM eclipse-temurin:21-jdk-jammy AS build
+# eclipse-temurin: open-source, production-grade JDK from Adoptium
+# 21-jdk-jammy: Java 21 LTS on Ubuntu 22.04 — specific tag, not 'latest'
+
+WORKDIR /build
+
+# Copy pom.xml first — Docker layer caching
+# If pom.xml hasn't changed, Maven dependencies are not re-downloaded
+COPY pom.xml .
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q
+# --mount=type=cache: BuildKit cache mount — speeds up repeated builds
+
+# Copy source and build
+COPY src ./src
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn clean package -DskipTests -q
+# -DskipTests: unit tests ran in CI — not repeated in Docker build
+# The JAR is now at target/claims-service-*.jar
+
+# ── STAGE 2: RUNTIME ─────────────────────────────────────────────────────────
+FROM eclipse-temurin:21-jre-jammy AS runtime
+# 21-jre-jammy: JRE only — no compiler, no source, no Maven
+# ~200MB vs ~600MB for the full JDK image
+
+# Build arguments — injected at build time, visible in image labels
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
+# OCI image labels — traceability: which SHA built this image
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.title="claims-service"
+LABEL org.opencontainers.image.description="CBA Claims Microservice — Spring Boot 3.2"
+
+# Create non-root user — containers must not run as root
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+WORKDIR /app
+
+# Copy only the JAR from the build stage — nothing else
+COPY --from=build /build/target/claims-service-*.jar app.jar
+
+# Set correct ownership
+RUN chown appuser:appgroup app.jar
+
+# Switch to non-root user
+USER appuser
+
+# JVM flags for containerised environments:
+#   -XX:+UseContainerSupport:      Respect container CPU/memory limits (not host)
+#   -XX:MaxRAMPercentage=75.0:     Use 75% of container RAM for heap
+#   -XX:+ExitOnOutOfMemoryError:   Crash fast (let orchestrator restart) vs hang
+#   -Djava.security.egd=...:       Faster SecureRandom (no blocking on /dev/random)
+ENV JAVA_OPTS="-XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:+ExitOnOutOfMemoryError \
+               -Djava.security.egd=file:/dev/./urandom"
+
+EXPOSE 8080
+
+# Health check — ECS uses this to determine if container is healthy
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar"]

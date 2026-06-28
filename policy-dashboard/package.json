@@ -1,0 +1,21 @@
+{
+  "name": "policy-dashboard",
+  "version": "1.0.0",
+  "description": "Policy Dashboard — Vanilla JavaScript + Playwright E2E. Demonstrates JavaScript core concepts and automated UI testing.",
+  "type": "module",
+  "scripts": {
+    "dev":          "npx serve src -p 3000",
+    "test":         "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+"test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --testPathPattern=tests/unit --coverage",    "test:e2e":     "playwright test",
+    "test:e2e:ui":  "playwright test --ui",
+    "test:headed":  "playwright test --headed",
+    "concepts":     "node js-concepts/01-closures.js && node js-concepts/02-event-loop.js && node js-concepts/03-prototypal-inheritance.js && node js-concepts/04-var-let-const.js && node js-concepts/05-this-binding.js && node js-concepts/06-promise-all.js && node js-concepts/07-debounce-throttle.js && node js-concepts/08-event-emitter.js"
+  },
+  "devDependencies": {
+    "@playwright/test":            "^1.40.0",
+    "@testing-library/jest-dom":   "^6.1.5",
+    "@testing-library/dom":        "^9.3.3",
+    "jest":                        "^29.7.0",
+    "jest-environment-jsdom":      "^29.7.0"
+  }
+}

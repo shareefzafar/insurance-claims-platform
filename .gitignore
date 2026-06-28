@@ -1,0 +1,26 @@
+# Java / Maven
+claims-service/target/
+claims-service/.mvn/
+*.class
+*.jar
+*.war
+
+# JavaScript / Node
+policy-dashboard/node_modules/
+policy-dashboard/coverage/
+policy-dashboard/playwright-report/
+policy-dashboard/test-results/
+policy-dashboard/dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
