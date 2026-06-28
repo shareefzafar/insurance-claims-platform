@@ -1,6 +1,6 @@
 # Claims Microservice
 
-Spring Boot microservice built for the CBA Software Engineer client round.
+Spring Boot microservice built for the InsureCo Software Engineer client round.
 Demonstrates SOLID principles, DRY, Composition over Inheritance, Design Patterns,
 Automated Testing, and DevSecOps — every concept linked to a specific file and line.
 
@@ -9,7 +9,7 @@ Automated Testing, and DevSecOps — every concept linked to a specific file and
 ## Project Structure
 
 ```
-src/main/java/com/allianz/claims/
+src/main/java/com.insureco/claims/
 ├── ClaimsServiceApplication.java
 ├── config/
 │   └── SecurityConfig.java               ← OAuth2 JWT, @PreAuthorize, stateless
@@ -48,7 +48,7 @@ src/main/java/com/allianz/claims/
 └── service/
     └── ClaimsService.java                ← All 5 SOLID principles applied here
 
-src/test/java/com/allianz/claims/
+src/test/java/com.insureco/claims/
 ├── controller/ClaimsControllerTest.java  ← @WebMvcTest, JWT roles, 401/403/404
 ├── pattern/ConfigurationManagerTest.java ← 50 threads, singleton guarantee
 ├── repository/ClaimRepositoryTest.java   ← Testcontainers PostgreSQL
@@ -714,7 +714,7 @@ DevSecOps demonstrated:
 
 ```
 PRODUCTION SETUP:
-  spring.security.oauth2.resourceserver.jwt.issuer-uri=https://identity.allianz.com/realms/allianz
+  spring.security.oauth2.resourceserver.jwt.issuer-uri=https://identity.insureco.com/realms/insureco
   Spring fetches the public key from the Keycloak JWKS endpoint automatically.
 
 TEST SETUP:
@@ -875,8 +875,8 @@ open target/site/jacoco/index.html
 If you run a single JUnit test from IntelliJ and see an error like:
 
 ```
-org.junit.platform.commons.PreconditionViolationException: Could not load class with name: com.allianz.claims.controller.ClaimsControllerTest
-Caused by: java.lang.ClassNotFoundException: com.allianz.claims.controller.ClaimsControllerTest
+org.junit.platform.commons.PreconditionViolationException: Could not load class with name: com.insureco.claims.controller.ClaimsControllerTest
+Caused by: java.lang.ClassNotFoundException: com.insureco.claims.controller.ClaimsControllerTest
 ```
 
 follow these steps — IntelliJ sometimes misses the Maven-generated test output or uses the wrong module classpath:

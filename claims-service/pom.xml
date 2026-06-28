@@ -11,12 +11,12 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.allianz</groupId>
+    <groupId>com.insureco</groupId>
     <artifactId>claims-service</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>claims-service</name>
     <description>
-        Allianz Claims Microservice — demonstrates SOLID, DRY, Composition over Inheritance,
+        InsureCo Claims Microservice — demonstrates SOLID, DRY, Composition over Inheritance,
         Design Patterns (Singleton, Strategy, Builder, Observer, Factory),
         Spring Boot REST API, OAuth2/JWT Security, and Automated Testing.
     </description>
